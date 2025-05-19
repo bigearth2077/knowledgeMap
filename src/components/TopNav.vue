@@ -9,9 +9,15 @@
     <el-menu-item index="0">
       <span>教师管理端</span>
     </el-menu-item>
-    <el-menu-item index="1">工作台</el-menu-item>
+    <el-menu-item index="1">
+      <el-icon><Grid /></el-icon>
+      <span>工作台</span>
+    </el-menu-item>
     <el-sub-menu index="2">
-      <template #title>我的</template>
+      <template #title>
+        <el-icon><Avatar /></el-icon>
+        <span>我的</span>
+      </template>
       <el-menu-item index="2-1">个人信息</el-menu-item>
       <el-menu-item index="2-2">登出</el-menu-item>
     </el-sub-menu>
@@ -22,6 +28,7 @@
 <script lang="ts" setup>
 import { ref } from 'vue'
 import TeacherInfo from './TeacherInfo.vue'
+import { Avatar, Grid } from '@element-plus/icons-vue'
 
 const activeIndex = ref('1')
 const infoVisible = ref(false)

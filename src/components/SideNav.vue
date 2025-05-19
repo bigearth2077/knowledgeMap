@@ -9,7 +9,7 @@
     >
       <el-sub-menu index="1">
         <template #title>
-          <el-icon><location /></el-icon>
+          <el-icon><DataBoard /></el-icon>
           <span>图表</span>
         </template>
         <el-menu-item index="/knowledge-graph">知识图谱</el-menu-item>
@@ -20,7 +20,7 @@
           <el-icon><icon-menu /></el-icon>
           <span>管理</span>
         </template>
-        <el-menu-item index="/knowledge-graph">图谱管理</el-menu-item>
+        <el-menu-item index="/graph-manage">图谱管理</el-menu-item>
         <el-menu-item index="/heatmap">班级管理</el-menu-item>
         <el-menu-item index="/question">题库管理</el-menu-item>
       </el-sub-menu>
@@ -37,7 +37,7 @@
 </template>
 
 <script lang="ts" setup>
-import { Document, Menu as IconMenu, Location, Setting } from '@element-plus/icons-vue'
+import { Document, Menu as IconMenu, Location, Setting, DataBoard } from '@element-plus/icons-vue'
 const handleOpen = (key: string, keyPath: string[]) => {
   console.log(key, keyPath)
 }

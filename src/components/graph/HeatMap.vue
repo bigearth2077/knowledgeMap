@@ -21,33 +21,42 @@ const categories = ref([])
 const selectedCategory = ref('all')
 const originalData = ref([])
 
-// 生成智能坐标轴标签
-const generateAxisLabels = (data) => {
-  const labels = new Set()
-  data.forEach((item) => {
-    const shortName = item.entity.length > 6 ? `${item.entity.substring(0, 6)}...` : item.entity
-    labels.add(shortName)
-  })
-  return Array.from(labels)
-}
-
-// 数据分组算法
-const groupData = (data, groupSize = 10) => {
-  const grouped = []
-  let currentGroup = []
-
-  data.sort((a, b) => b.count - a.count) // 按热度排序
-
-  data.forEach((item, index) => {
-    if (index % groupSize === 0 && currentGroup.length > 0) {
-      grouped.push(currentGroup)
-      currentGroup = []
+// 处理数据为矩阵格式
+const processData = (data) => {
+  const categoryMap = data.reduce((acc, item) => {
+    if (!acc[item.category]) {
+      acc[item.category] = []
     }
-    currentGroup.push(item)
+    acc[item.category].push(item)
+    return acc
+  }, {})
+
+  // 对每个分类按热度排序
+  Object.values(categoryMap).forEach((category) => {
+    category.sort((a, b) => b.count - a.count)
   })
 
-  if (currentGroup.length > 0) grouped.push(currentGroup)
-  return grouped
+  // 获取所有分类和最大行数
+  const categories = Object.keys(categoryMap)
+  const maxRows = Math.max(...Object.values(categoryMap).map((c) => c.length))
+
+  // 生成二维矩阵数据
+  const heatData = []
+  categories.forEach((category, xIndex) => {
+    categoryMap[category].forEach((item, yIndex) => {
+      heatData.push({
+        value: [xIndex, yIndex, item.count],
+        name: item.entity,
+        rawData: item,
+      })
+    })
+  })
+
+  return {
+    categories,
+    maxRows,
+    heatData,
+  }
 }
 
 const initChart = async () => {
@@ -55,31 +64,19 @@ const initChart = async () => {
   originalData.value = data.entities
   categories.value = [...new Set(data.entities.map((item) => item.category))]
 
-  // 数据预处理
+  // 数据过滤
   const filteredData =
     selectedCategory.value === 'all'
       ? originalData.value
       : originalData.value.filter((item) => item.category === selectedCategory.value)
 
-  const groupedData = groupData(filteredData)
-  const axisLabels = generateAxisLabels(filteredData)
-
-  // 生成二维热力数据
-  const heatData = []
-  groupedData.forEach((group, groupIndex) => {
-    group.forEach((item, itemIndex) => {
-      heatData.push({
-        value: [groupIndex, itemIndex, item.count],
-        name: item.entity,
-        rawData: item,
-      })
-    })
-  })
+  // 处理数据为矩阵格式
+  const { categories: axisCategories, maxRows, heatData } = processData(filteredData)
 
   const option = {
     title: {
       text: '知识节点访问热力图',
-      subtext: '组别维度 × 知识点热度排序',
+      subtext: '分类维度 × 热度排名',
       left: 'center',
     },
     tooltip: {
@@ -90,22 +87,28 @@ const initChart = async () => {
             <h4>${data.entity}</h4>
             <p>分类：${data.category}</p>
             <p>访问次数：${data.count}</p>
-            <p>关联知识点：${data.related?.join(', ') || '无'}</p>
+            <p>排名：${params.value[1] + 1}</p>
           </div>
         `
       },
     },
     xAxis: {
       type: 'category',
-      name: '知识组别',
-      data: groupedData.map((_, i) => `第 ${i + 1} 组`),
-      axisLabel: { rotate: 45 },
+      name: '知识分类',
+      data: axisCategories,
+      axisLabel: {
+        rotate: 45,
+        interval: 0,
+      },
     },
     yAxis: {
       type: 'category',
-      name: '知识点热度排序',
-      data: axisLabels,
-      axisLabel: { width: 100, overflow: 'truncate' },
+      name: '热度排名',
+      inverse: true,
+      data: Array.from({ length: maxRows }, (_, i) => i + 1),
+      axisLabel: {
+        formatter: (value) => `TOP ${value}`,
+      },
     },
     visualMap: {
       min: 0,
@@ -127,19 +130,93 @@ const initChart = async () => {
           '#023858',
         ],
       },
-      textStyle: { color: '#666' },
     },
     series: [
       {
         type: 'heatmap',
         data: heatData,
-        itemStyle: { borderColor: '#fff', borderWidth: 1 },
-        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.3)' } },
+        itemStyle: {
+          borderWidth: 1,
+          borderColor: '#fff',
+        },
+        label: {
+          show: true,
+          formatter: ({ data }) => {
+            const name = data.name
+            return name.length > 8 ? `${name.substring(0, 7)}...` : name
+          },
+          fontSize: 10,
+          align: 'center',
+          verticalAlign: 'middle',
+          color: (params) => {
+            try {
+              // 统一处理颜色格式
+              let color = params.color
+
+              // 转换rgba为hex格式（假设透明度为1）
+              if (color.startsWith('rgba')) {
+                const rgba = color.match(/(\d+)/g)
+                const hex = rgba
+                  .slice(0, 3)
+                  .map((n) => parseInt(n).toString(16).padStart(2, '0'))
+                  .join('')
+                color = `#${hex}`
+              }
+
+              // 处理简写格式（如#fff）
+              if (color.length === 4) {
+                color =
+                  '#' +
+                  color
+                    .slice(1)
+                    .split('')
+                    .map((c) => c + c)
+                    .join('')
+              }
+
+              // 解析HEX颜色
+              const hex = color.replace('#', '')
+              const r = parseInt(hex.substring(0, 2), 16)
+              const g = parseInt(hex.substring(2, 4), 16)
+              const b = parseInt(hex.substring(4, 6), 16)
+
+              // 计算亮度（使用WCAG标准公式）
+              const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+
+              // 动态阈值（深色背景用白字，浅色用黑字）
+              return luminance > 0.6 ? '#333' : '#fff'
+            } catch (e) {
+              console.warn('颜色解析失败:', e)
+              return '#333' // 默认颜色
+            }
+          },
+          textStyle: {
+            fontWeight: 'bold',
+            textShadowColor: 'rgba(0,0,0,0.3)',
+            textShadowBlur: 2,
+          },
+        },
+        emphasis: {
+          itemStyle: {
+            shadowBlur: 10,
+            shadowColor: 'rgba(0,0,0,0.3)',
+          },
+        },
       },
     ],
     dataZoom: [
-      { type: 'slider', show: true, yAxisIndex: 0, right: 15 },
-      { type: 'inside', yAxisIndex: 0 },
+      {
+        type: 'slider',
+        show: true,
+        yAxisIndex: 0,
+        right: 15,
+        start: 0,
+        end: 100,
+      },
+      {
+        type: 'inside',
+        yAxisIndex: 0,
+      },
     ],
   }
 
@@ -147,6 +224,11 @@ const initChart = async () => {
 }
 
 const updateChart = () => {
+  // 先清空实例再重新初始化
+  if (chartInstance) {
+    chartInstance.dispose()
+  }
+  chartInstance = echarts.init(heatmapRef.value)
   initChart()
 }
 
