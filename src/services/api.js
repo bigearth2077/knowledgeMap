@@ -3,7 +3,7 @@ import { useAuthStore } from '../stores/auth'
 
 export const api = axios.create({
   baseURL: '/',
-  timeout: 10_000,
+  timeout: 100_000,
 })
 
 // 请求拦截：自动带上 access-token
