@@ -120,10 +120,10 @@ async function changePwd() {
       <div class="card w-96 bg-base-100 shadow-xl">
         <div class="card-body">
           <form @submit.prevent="onLogin" class="space-y-3">
-            <label class="input input-bordered flex items-center gap-2">
+            <label class="input input-bordered flex items-center gap-2 w-full">
               <input v-model="username" type="text" placeholder="用户名" class="grow" required />
             </label>
-            <label class="input input-bordered flex items-center gap-2">
+            <label class="input input-bordered flex items-center gap-2 w-full">
               <input v-model="password" type="password" placeholder="密码" class="grow" required />
             </label>
 

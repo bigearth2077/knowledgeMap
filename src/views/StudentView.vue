@@ -3,7 +3,11 @@
     <!-- Top navigation + main graph area -->
     <div class="flex-1 flex flex-col">
       <!-- 监听 select-entity 事件 -->
-      <StudentTopNav @select-entity="onSelectEntity" @search-results="onSearchResults" />
+      <StudentTopNav
+        @select-entity="onSelectEntity"
+        @search-results="onSearchResults"
+        class="bg-base-300"
+      />
       <main class="flex-1 p-0 flex">
         <!-- 将 selectedEntity 传入 KnowledgeGraph -->
         <KnowledgeGraph
@@ -17,12 +21,11 @@
 
     <!-- Floating SideNav -->
     <SideNav
-      class="fixed top-60 left-5 z-50 rounded-4xl"
+      class="fixed top-60 left-5 z-50 rounded-4xl shadow-md"
       @update-zoom="onZoom"
       @show-relationships="toggleRelations"
       @show-categories="toggleCategories"
       @show-favorites="toggleFavorites"
-      @show-assessments="toggleAssessments"
     />
 
     <transition name="fade">
@@ -37,23 +40,10 @@
     <!-- Floating AI Chat Button -->
     <button
       @click="toggleChat"
-      class="btn btn-primary btn-circle shadow-lg fixed bottom-8 right-8 z-50 hover:scale-105 transition-transform"
+      class="btn btn-primary btn-xl btn-circle shadow-lg fixed bottom-8 right-8 z-50 hover:scale-105 transition-transform"
       aria-label="AI 助教"
     >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        class="h-6 w-6"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-      >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="2"
-          d="M8 10h.01M12 10h.01M16 10h.01M9 16h6M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4-.8L3 21l1.8-4A8 8 0 114 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-        />
-      </svg>
+      <botIcon class="w-10 h-10 rounded-2xl" />
     </button>
 
     <transition name="slide-fade">
@@ -78,7 +68,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import StudentTopNav from '@/components/student/StudentTopNav.vue'
 import KnowledgeGraph from '@/components/graph/KnowledgeGraph.vue'
 import SideNav from '@/components/student/StudentSideNav.vue'
@@ -87,6 +77,8 @@ import CategoryStats from '@/components/student/sideNavComponents/CategoryStats.
 import Favorites from '@/components/student/sideNavComponents/Favorites.vue'
 import AiChat from '@/components/student/AiChat.vue'
 import Assessment from '@/components/student/sideNavComponents/Assessment.vue'
+import { Bot as botIcon } from 'lucide-vue-next'
+import axios from '@/services/api'
 
 // 缩放状态
 const zoom = ref(1)
@@ -119,9 +111,6 @@ function toggleCategories() {
 function toggleFavorites() {
   activePanel.value = activePanel.value === 'favorites' ? null : 'favorites'
 }
-function toggleAssessments() {
-  showAssessment.value = !showAssessment.value
-}
 function toggleChat() {
   showChat.value = !showChat.value
 }
@@ -137,6 +126,29 @@ const panelComponent = computed(() => {
       return Favorites
     default:
       return null
+  }
+})
+
+// Heartbeat: periodically POST to /api/heartbeat to keep session alive
+let heartbeatTimer: number | null = null
+async function sendHeartbeat() {
+  try {
+    await axios.post('/api/heartbeat')
+  } catch (err) {
+    console.error('[Heartbeat]', err)
+  }
+}
+
+onMounted(() => {
+  // Initial heartbeat
+  sendHeartbeat()
+  // Repeat every 60 seconds
+  heartbeatTimer = window.setInterval(sendHeartbeat, 60000)
+})
+
+onBeforeUnmount(() => {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer)
   }
 })
 </script>

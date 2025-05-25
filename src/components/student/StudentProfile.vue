@@ -6,7 +6,7 @@
     </div>
 
     <!-- 资料表单 -->
-    <div v-else class="card bg-base-100 shadow-md">
+    <div v-else class="card bg-base-100">
       <div class="card-body">
         <h2 class="card-title">个人资料</h2>
         <form @submit.prevent="saveProfile" class="space-y-4">
