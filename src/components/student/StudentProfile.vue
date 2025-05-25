@@ -52,7 +52,7 @@
               required
             />
             <p v-if="showClassWarning" class="text-warning text-sm mt-1">
-              ⚠️ 更改班级代号将会加入新的班级，只有代号无名称权限修改，是否确认？
+              ⚠️ 更改班级代号将会加入新的班级，是否确认？
             </p>
           </div>
 

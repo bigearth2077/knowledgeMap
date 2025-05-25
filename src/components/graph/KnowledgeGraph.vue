@@ -23,9 +23,10 @@ import { ref, onMounted, nextTick, watch } from 'vue'
 import * as d3 from 'd3'
 import { useGraphStore } from '@/stores/graphStore'
 import EntityDetail from '@/components/graph/EntityDetail.vue'
+import debounce from 'lodash/debounce'
+import isEqual from 'lodash/isEqual'
 
-const graphStore = useGraphStore()
-
+/** 类型定义 **/
 interface Attribute {
   attribute: string
   value: string
@@ -47,27 +48,35 @@ interface GraphResponse {
   relations: Relation[]
 }
 
-// 接收父组件传入的 zoom prop
-const props = defineProps<{ zoom: number }>()
+// Pinia store
+const graphStore = useGraphStore()
 
+// 接收外部Props
+const props = defineProps<{
+  zoom: number
+  selectedEntity: string | null
+  filteredEntities?: string[]
+}>()
+// 发射打开详情事件
+const emit = defineEmits<{ (e: 'open-details', entity: string): void }>()
+
+// DOM & D3 引用
 const graphContainer = ref<HTMLElement | null>(null)
-// 保存 D3 相关引用以便在 watch 中调用
 const svgRef = ref<d3.Selection<SVGSVGElement, unknown, null, undefined> | null>(null)
 const zoomBehaviorRef = ref<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null)
 const zoomGroupRef = ref<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null)
+const prevFilter = ref<string[]>([])
 
-// 当前被选中的实体（用于显示详情抽屉）
+// 当前选中，用于详情抽屉
 const selectedEntity = ref<string | null>(null)
 
+// 初始加载图数据并渲染
 onMounted(async () => {
-  // 1. 用 store 拉取图数据
   await graphStore.fetchGraph()
   await nextTick()
-
-  // 2. 数据就绪后调用 drawGraph，并传入 store.graphData
-  if (graphContainer.value && graphStore.graphData) {
-    drawGraph(graphStore.graphData)
-
+  const data = graphStore.graphData
+  if (graphContainer.value && data) {
+    drawGraph(data)
     // 初始应用 zoom
     if (props.zoom !== 1 && zoomBehaviorRef.value && svgRef.value) {
       svgRef.value.call(zoomBehaviorRef.value.scaleTo as any, props.zoom)
@@ -75,7 +84,7 @@ onMounted(async () => {
   }
 })
 
-// 3. 响应外部 zoom 变化
+// 响应 zoom 改变
 watch(
   () => props.zoom,
   (newScale) => {
@@ -88,7 +97,7 @@ watch(
   },
 )
 
-// 4. 如果 store 中的数据后来有更新，也重新绘图
+// 若全局数据更新，重绘
 watch(
   () => graphStore.graphData,
   (data) => {
@@ -98,6 +107,37 @@ watch(
   },
 )
 
+// 选中实体变化，展示抽屉
+watch(
+  () => props.selectedEntity,
+  (entity) => {
+    if (entity) {
+      selectedEntity.value = entity
+    }
+  },
+)
+
+//防抖函数
+const doFilterDraw = debounce((list: string[]) => {
+  // 如果和上一次列表相同，就不用重绘
+  if (isEqual(list, prevFilter.value)) return
+
+  // 否则更新缓存、计算子图并重绘
+  prevFilter.value = [...list]
+  const data = graphStore.graphData!
+  const sub = getSubgraph(data, list)
+  drawGraph(sub)
+}, 300)
+
+// 搜索过滤列表变化，生成子图并重绘
+watch(
+  () => props.filteredEntities,
+  (list) => {
+    doFilterDraw(list || [])
+  },
+)
+
+/** 渲染主流程 **/
 function drawGraph(data: GraphResponse) {
   const container = graphContainer.value!
   const { entities, relations } = data
@@ -108,10 +148,11 @@ function drawGraph(data: GraphResponse) {
   d3.select(container).select('svg').remove()
   d3.select(container).selectAll('.kg-tooltip').remove()
 
+  // 新建 SVG
   const svg = d3.select(container).append('svg').attr('width', width).attr('height', height)
   svgRef.value = svg
 
-  // 添加 tooltip 容器
+  // Tooltip
   const tooltip = d3
     .select('body')
     .append('div')
@@ -120,7 +161,7 @@ function drawGraph(data: GraphResponse) {
       'kg-tooltip bg-base-100 text-base-content border border-base-300 p-2 rounded-lg shadow-lg hidden absolute z-50',
     )
 
-  // 定义 zoom 行为
+  // Zoom 行为
   const zoomBehavior = d3
     .zoom<SVGSVGElement, unknown>()
     .scaleExtent([0.1, 2])
@@ -141,7 +182,7 @@ function drawGraph(data: GraphResponse) {
   const radiusScale = d3.scaleSqrt<number, number>().domain([0, 1]).range([6, 26])
   const colorScale = d3.scaleOrdinal<string, string>(d3.schemeTableau10)
 
-  // 力导模拟，增加向心力
+  // 力导模拟
   const simulation = d3
     .forceSimulation(nodes)
     .force(
@@ -153,8 +194,6 @@ function drawGraph(data: GraphResponse) {
     )
     .force('charge', d3.forceManyBody().strength(-100))
     .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('x', d3.forceX(width / 2).strength(0.05))
-    .force('y', d3.forceY(height / 2).strength(0.05))
     .force(
       'collision',
       d3
@@ -163,12 +202,12 @@ function drawGraph(data: GraphResponse) {
         .strength(1),
     )
 
-  // 创建 zoom-group 容器
+  // 画布容器
   const zoomGroup = svg.append('g').attr('class', 'zoom-group')
   zoomGroupRef.value = zoomGroup
 
-  // 绘制连线
-  const link = zoomGroup
+  // 连线
+  zoomGroup
     .append('g')
     .attr('stroke', '#9CA3AF')
     .attr('stroke-opacity', 0.6)
@@ -178,16 +217,33 @@ function drawGraph(data: GraphResponse) {
     .append('line')
     .attr('stroke-width', 1.5)
 
-  // 绘制节点组
+  // 节点组
   const nodeGroup = zoomGroup
     .append('g')
     .selectAll('g')
     .data(nodes)
     .enter()
     .append('g')
-    .call(drag(simulation))
+    .call(
+      d3
+        .drag<SVGGElement, any>()
+        .on('start', (event, d) => {
+          if (!event.active) simulation.alphaTarget(0.3).restart()
+          d.fx = d.x
+          d.fy = d.y
+        })
+        .on('drag', (event, d) => {
+          d.fx = event.x
+          d.fy = event.y
+        })
+        .on('end', (event, d) => {
+          if (!event.active) simulation.alphaTarget(0)
+          d.fx = null
+          d.fy = null
+        }),
+    )
 
-  // 圆和悬浮提示
+  // 圆和文字
   nodeGroup
     .append('circle')
     .attr('r', (d: any) => radiusScale(d.weight!))
@@ -196,10 +252,12 @@ function drawGraph(data: GraphResponse) {
     .on('mouseover', function (event: MouseEvent, d: any) {
       tooltip
         .html(
-          `<div class="font-bold text-sm">${d.entity}</div>
-           <div class="text-xs">类型: ${d.category}</div>
-           <div class="text-xs">权重: ${d.weight!.toFixed(2)}</div>
-           <div class="text-sm text-primary cursor-pointer mt-1">点击查看完整详情</div>`,
+          `
+          <div class="font-bold text-sm">${d.entity}</div>
+          <div class="text-xs">类型: ${d.category}</div>
+          <div class="text-xs">权重: ${d.weight!.toFixed(2)}</div>
+          <div class="text-sm text-primary cursor-pointer mt-1">点击查看完整详情</div>
+        `,
         )
         .classed('hidden', false)
         .style('left', event.pageX + 10 + 'px')
@@ -208,20 +266,11 @@ function drawGraph(data: GraphResponse) {
     .on('mousemove', function (event: MouseEvent) {
       tooltip.style('left', event.pageX + 10 + 'px').style('top', event.pageY + 10 + 'px')
     })
-    .on('mouseout', function () {
-      tooltip.classed('hidden', true)
-    })
-    .on('click', function (event: MouseEvent, d: any) {
-      // 更新点击权重并重绘
-      d.weight = Math.min(1, (d.weight ?? 0) + 0.05)
-      d3.select(this).transition().attr('r', radiusScale(d.weight!))
-      simulation.alpha(0.3).restart()
-
-      // 打开实体详情抽屉
+    .on('mouseout', () => tooltip.classed('hidden', true))
+    .on('click', (_event, d: any) => {
       selectedEntity.value = d.entity
     })
 
-  // 文本标签居中
   nodeGroup
     .append('text')
     .text((d: any) => d.entity)
@@ -229,9 +278,10 @@ function drawGraph(data: GraphResponse) {
     .attr('dy', '0.35em')
     .attr('class', 'text-xs fill-current pointer-events-none')
 
-  // 模拟与边界检测
+  // 布局更新
   simulation.on('tick', () => {
-    link
+    zoomGroup
+      .selectAll('line')
       .attr('x1', (d: any) => (d.source as any).x)
       .attr('y1', (d: any) => (d.source as any).y)
       .attr('x2', (d: any) => (d.target as any).x)
@@ -261,22 +311,20 @@ function drawGraph(data: GraphResponse) {
   })
 }
 
-function drag(sim: d3.Simulation<any, undefined>) {
-  function dragstarted(event: d3.D3DragEvent<any, any, any>) {
-    if (!event.active) sim.alphaTarget(0.3).restart()
-    event.subject.fx = event.subject.x
-    event.subject.fy = event.subject.y
-  }
-  function dragged(event: d3.D3DragEvent<any, any, any>) {
-    event.subject.fx = event.x
-    event.subject.fy = event.y
-  }
-  function dragended(event: d3.D3DragEvent<any, any, any>) {
-    if (!event.active) sim.alphaTarget(0)
-    event.subject.fx = null
-    event.subject.fy = null
-  }
-  return d3.drag().on('start', dragstarted).on('drag', dragged).on('end', dragended)
+// 获取子图函数
+function getSubgraph(data: GraphResponse, matched: string[]): GraphResponse {
+  if (!matched?.length) return data
+  const hit = new Set(matched)
+  const neighbors = new Set<string>(matched)
+  data.relations.forEach((r) => {
+    if (hit.has(r.subject) || hit.has(r.object)) {
+      neighbors.add(r.subject)
+      neighbors.add(r.object)
+    }
+  })
+  const ents = data.entities.filter((e) => neighbors.has(e.entity))
+  const rels = data.relations.filter((r) => hit.has(r.subject) || hit.has(r.object))
+  return { entities: ents, relations: rels }
 }
 </script>
 

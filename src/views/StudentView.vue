@@ -2,9 +2,16 @@
   <div class="relative flex min-h-screen">
     <!-- Top navigation + main graph area -->
     <div class="flex-1 flex flex-col">
-      <StudentTopNav />
+      <!-- 监听 select-entity 事件 -->
+      <StudentTopNav @select-entity="onSelectEntity" @search-results="onSearchResults" />
       <main class="flex-1 p-0 flex">
-        <KnowledgeGraph class="flex-1" :zoom="zoom" />
+        <!-- 将 selectedEntity 传入 KnowledgeGraph -->
+        <KnowledgeGraph
+          class="flex-1"
+          :zoom="zoom"
+          :selectedEntity="selectedEntity"
+          :filteredEntities="searchResults"
+        />
       </main>
     </div>
 
@@ -17,6 +24,15 @@
       @show-favorites="toggleFavorites"
       @show-assessments="toggleAssessments"
     />
+
+    <transition name="fade">
+      <div v-if="panelComponent" class="fixed top-60 left-24">
+        <component
+          :is="panelComponent"
+          class="card bg-base-100 shadow-lg rounded-lg overflow-hidden"
+        />
+      </div>
+    </transition>
 
     <!-- Floating AI Chat Button -->
     <button
@@ -72,13 +88,24 @@ import Favorites from '@/components/student/sideNavComponents/Favorites.vue'
 import AiChat from '@/components/student/AiChat.vue'
 import Assessment from '@/components/student/sideNavComponents/Assessment.vue'
 
-// Zoom state
+// 缩放状态
 const zoom = ref(1)
 function onZoom(scale: number) {
   zoom.value = scale
 }
 
-// Panel toggles
+const searchResults = ref<string[]>([])
+function onSearchResults(list: string[]) {
+  searchResults.value = list
+}
+
+// 监听并存储选中的实体名称
+const selectedEntity = ref<string | null>(null)
+function onSelectEntity(entity: string) {
+  selectedEntity.value = entity
+}
+
+// 面板切换
 const activePanel = ref<'relations' | 'categories' | 'favorites' | null>(null)
 const showChat = ref(false)
 const showAssessment = ref(false)
@@ -99,7 +126,7 @@ function toggleChat() {
   showChat.value = !showChat.value
 }
 
-// Determine which side panel to show
+// 决定显示哪个侧边面板
 const panelComponent = computed(() => {
   switch (activePanel.value) {
     case 'relations':

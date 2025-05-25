@@ -44,22 +44,22 @@
             </div>
           </div>
 
-          <!-- Attributes -->
-          <div>
-            <h3 class="font-semibold mb-2">属性</h3>
-            <ul class="list-disc list-inside space-y-1">
-              <li v-for="attr in detail.attributes" :key="attr.attribute">
-                <strong>{{ attr.attribute }}：</strong>{{ attr.value }}
-              </li>
-            </ul>
-          </div>
-
           <!-- Relations -->
           <div>
             <h3 class="font-semibold mb-2">关系</h3>
             <ul class="list-disc list-inside space-y-1">
               <li v-for="(rel, idx) in detail.relations" :key="idx">
                 {{ rel[0] }} <span class="badge badge-outline mx-1">{{ rel[2] }}</span> {{ rel[1] }}
+              </li>
+            </ul>
+          </div>
+
+          <!-- Attributes -->
+          <div>
+            <h3 class="font-semibold mb-2">属性</h3>
+            <ul class="list-disc list-inside space-y-1">
+              <li v-for="attr in detail.attributes" :key="attr.attribute">
+                <strong>{{ attr.attribute }}：</strong>{{ attr.value }}
               </li>
             </ul>
           </div>
