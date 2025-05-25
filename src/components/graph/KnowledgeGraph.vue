@@ -206,6 +206,49 @@ function drawGraph(data: GraphResponse) {
   const zoomGroup = svg.append('g').attr('class', 'zoom-group')
   zoomGroupRef.value = zoomGroup
 
+  const link = zoomGroup
+    .append('g')
+    .attr('class', 'links')
+    .selectAll('path')
+    .data(links)
+    .enter()
+    .append('path')
+    .attr('class', 'link')
+    .attr('fill', 'none')
+    .attr('stroke', '#9CA3AF')
+    .attr('stroke-width', 1.5)
+    .attr('marker-end', 'url(#arrow)')
+    .attr('id', (_d, i) => `linkPath${i}`) // ← 这里
+
+  const linkLabels = zoomGroup
+    .append('g')
+    .attr('class', 'link-labels')
+    .selectAll('text')
+    .data(links)
+    .enter()
+    .append('text')
+    .attr('font-size', '10px')
+    .attr('fill', '#6B7280')
+    .append('textPath')
+    .attr('href', (_d, i) => `#linkPath${i}`) // ← 对应上面的 id
+    .attr('startOffset', '50%') // 居中
+    .attr('text-anchor', 'middle')
+    .text((d) => d.predicate)
+
+  svg
+    .append('defs')
+    .append('marker')
+    .attr('id', 'arrow')
+    .attr('viewBox', '0 -5 10 10')
+    .attr('refX', 15) // 箭头位置，可根据节点半径微调
+    .attr('refY', 0)
+    .attr('markerWidth', 6)
+    .attr('markerHeight', 6)
+    .attr('orient', 'auto')
+    .append('path')
+    .attr('d', 'M0,-5L10,0L0,5')
+    .attr('fill', '#9CA3AF')
+
   // 连线
   zoomGroup
     .append('g')
@@ -280,12 +323,27 @@ function drawGraph(data: GraphResponse) {
 
   // 布局更新
   simulation.on('tick', () => {
-    zoomGroup
-      .selectAll('line')
-      .attr('x1', (d: any) => (d.source as any).x)
-      .attr('y1', (d: any) => (d.source as any).y)
-      .attr('x2', (d: any) => (d.target as any).x)
-      .attr('y2', (d: any) => (d.target as any).y)
+    link.attr('d', (d: any) => {
+      let sx = d.source.x,
+        sy = d.source.y,
+        tx = d.target.x,
+        ty = d.target.y
+      const dx = tx - sx,
+        dy = ty - sy,
+        dr = Math.sqrt(dx * dx + dy * dy)
+      // 如果目标在左边，就调换起点和终点，并反向弧度标记
+      let sweep = 1
+      if (tx < sx) {
+        ;[sx, sy, tx, ty] = [tx, ty, sx, sy]
+        sweep = 0
+      }
+      return `M${sx},${sy}A${dr},${dr} 0 0,${sweep} ${tx},${ty}`
+    })
+
+    // 更新标签位置到连线中点
+    linkLabels
+      .attr('x', (d: any) => ((d.source as any).x + (d.target as any).x) / 2)
+      .attr('y', (d: any) => ((d.source as any).y + (d.target as any).y) / 2)
 
     nodes.forEach((d: any) => {
       const r = radiusScale(d.weight!)
