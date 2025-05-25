@@ -142,6 +142,7 @@ async function fetchDetail(entity: string) {
     console.error('[EntityDetail] 获取详情失败', error)
   } finally {
     loading.value = false
+    axios.post('/api/click', { entity })
   }
 }
 

@@ -2,11 +2,7 @@
   <!-- 包裹图谱与实体详情抽屉 -->
   <div class="relative flex-1 w-full h-full">
     <!-- D3 知识图谱容器 -->
-    <div
-      ref="graphContainer"
-      class="flex-1 w-full h-full bg-base-200 rounded-lg"
-      :style="{ height: `calc(100vh - 4rem - 2rem)` }"
-    ></div>
+    <div ref="graphContainer" class="flex-1 w-full h-full bg-base-200 h-full rounded-lg"></div>
 
     <!-- 实体详情抽屉 -->
     <EntityDetail
@@ -146,7 +142,7 @@ function drawGraph(data: GraphResponse) {
 
   // 清理旧图及 tooltip
   d3.select(container).select('svg').remove()
-  d3.select(container).selectAll('.kg-tooltip').remove()
+  d3.select('body').selectAll('.kg-tooltip').remove()
 
   // 新建 SVG
   const svg = d3.select(container).append('svg').attr('width', width).attr('height', height)
@@ -161,86 +157,80 @@ function drawGraph(data: GraphResponse) {
       'kg-tooltip bg-base-100 text-base-content border border-base-300 p-2 rounded-lg shadow-lg hidden absolute z-50',
     )
 
-  // Zoom 行为
-  const zoomBehavior = d3
-    .zoom<SVGSVGElement, unknown>()
-    .scaleExtent([0.1, 2])
-    .on('zoom', (event) => {
-      zoomGroupRef.value?.attr('transform', event.transform)
-    })
-  zoomBehaviorRef.value = zoomBehavior
-  svg.call(zoomBehavior)
-
-  // 数据转换
-  const nodes: any[] = entities.map((e) => ({ ...e, id: e.entity }))
-  const links: any[] = relations.map((r) => ({
-    source: r.subject,
-    target: r.object,
-    predicate: r.predicate,
+  // --- 数据预处理：实体节点 + 中间虚拟节点 ---
+  const entityNodes = entities.map((e) => ({
+    id: e.entity,
+    weight: e.weight!,
+    category: e.category,
+    isMid: false,
+    original: e,
   }))
 
+  const midNodes: any[] = []
+  const linkPairs: { source: string; target: string; relIndex: number }[] = []
+
+  relations.forEach((r, i) => {
+    const midId = `mid-${i}`
+    midNodes.push({ id: midId, isMid: true })
+    linkPairs.push(
+      { source: r.subject, target: midId, relIndex: i },
+      { source: midId, target: r.object, relIndex: i },
+    )
+  })
+
+  const allNodes = [...entityNodes, ...midNodes]
+  const allLinks = linkPairs.map((lp) => ({
+    source: lp.source,
+    target: lp.target,
+    relIndex: lp.relIndex,
+  }))
+
+  // 比例尺 & 颜色
   const radiusScale = d3.scaleSqrt<number, number>().domain([0, 1]).range([6, 26])
   const colorScale = d3.scaleOrdinal<string, string>(d3.schemeTableau10)
 
   // 力导模拟
   const simulation = d3
-    .forceSimulation(nodes)
+    .forceSimulation(allNodes as any)
     .force(
       'link',
       d3
-        .forceLink(links)
+        .forceLink(allLinks as any)
         .id((d: any) => d.id)
-        .distance(100),
-    )
-    .force('charge', d3.forceManyBody().strength(-100))
-    .force('center', d3.forceCenter(width / 2, height / 2))
-    .force(
-      'collision',
-      d3
-        .forceCollide()
-        .radius((d: any) => radiusScale(d.weight!) + 4)
+        .distance((d) => (d.isMid ? 50 : 0))
         .strength(1),
     )
+    .force('charge', d3.forceManyBody().strength(-200))
+    .force(
+      'collision',
+      d3.forceCollide().radius((d: any) => (d.isMid ? 8 : radiusScale(d.weight) + 6)),
+    )
+    .force('center', d3.forceCenter(width / 2, height / 2))
+    .force('x', d3.forceX(width / 2).strength(0.1))
+    .force('y', d3.forceY(height / 2).strength(0.1))
+    .alphaTarget(0.3)
+    .alphaDecay(0.02)
+    .velocityDecay(0.5)
 
   // 画布容器
   const zoomGroup = svg.append('g').attr('class', 'zoom-group')
   zoomGroupRef.value = zoomGroup
 
-  const link = zoomGroup
-    .append('g')
-    .attr('class', 'links')
-    .selectAll('path')
-    .data(links)
-    .enter()
-    .append('path')
-    .attr('class', 'link')
-    .attr('fill', 'none')
-    .attr('stroke', '#9CA3AF')
-    .attr('stroke-width', 1.5)
-    .attr('marker-end', 'url(#arrow)')
-    .attr('id', (_d, i) => `linkPath${i}`) // ← 这里
+  // Zoom 行为
+  const zoomBehavior = d3
+    .zoom<SVGSVGElement, unknown>()
+    .scaleExtent([0.1, 2])
+    .on('zoom', (event) => zoomGroup.attr('transform', event.transform))
+  zoomBehaviorRef.value = zoomBehavior
+  svg.call(zoomBehavior)
 
-  const linkLabels = zoomGroup
-    .append('g')
-    .attr('class', 'link-labels')
-    .selectAll('text')
-    .data(links)
-    .enter()
-    .append('text')
-    .attr('font-size', '10px')
-    .attr('fill', '#6B7280')
-    .append('textPath')
-    .attr('href', (_d, i) => `#linkPath${i}`) // ← 对应上面的 id
-    .attr('startOffset', '50%') // 居中
-    .attr('text-anchor', 'middle')
-    .text((d) => d.predicate)
-
+  // 箭头定义
   svg
     .append('defs')
     .append('marker')
     .attr('id', 'arrow')
     .attr('viewBox', '0 -5 10 10')
-    .attr('refX', 15) // 箭头位置，可根据节点半径微调
+    .attr('refX', 10)
     .attr('refY', 0)
     .attr('markerWidth', 6)
     .attr('markerHeight', 6)
@@ -249,22 +239,39 @@ function drawGraph(data: GraphResponse) {
     .attr('d', 'M0,-5L10,0L0,5')
     .attr('fill', '#9CA3AF')
 
-  // 连线
-  zoomGroup
+  // 绘制关系曲线 path（不包含中点节点）
+  const relData = relations.map((r, i) => ({ ...r, index: i }))
+  const linkCurves = zoomGroup
     .append('g')
-    .attr('stroke', '#9CA3AF')
-    .attr('stroke-opacity', 0.6)
-    .selectAll('line')
-    .data(links)
+    .attr('class', 'link-curves')
+    .selectAll('path')
+    .data(relData)
     .enter()
-    .append('line')
+    .append('path')
+    .attr('fill', 'none')
+    .attr('stroke', '#9CA3AF')
     .attr('stroke-width', 1.5)
+    .attr('marker-end', 'url(#arrow)')
+    .attr('id', (d) => `curvePath${d.index}`)
 
-  // 节点组
+  // 关系标签
+  const linkLabels = zoomGroup
+    .append('g')
+    .attr('class', 'link-labels')
+    .selectAll('text')
+    .data(relData)
+    .enter()
+    .append('text')
+    .attr('font-size', '10px')
+    .attr('fill', '#6B7280')
+    .attr('text-anchor', 'middle')
+    .text((d) => d.predicate)
+
+  // 绘制实体节点
   const nodeGroup = zoomGroup
     .append('g')
     .selectAll('g')
-    .data(nodes)
+    .data(entityNodes)
     .enter()
     .append('g')
     .call(
@@ -286,87 +293,83 @@ function drawGraph(data: GraphResponse) {
         }),
     )
 
-  // 圆和文字
   nodeGroup
     .append('circle')
-    .attr('r', (d: any) => radiusScale(d.weight!))
-    .attr('fill', (d: any) => colorScale(d.category))
+    .attr('r', (d) => radiusScale(d.weight))
+    .attr('fill', (d) => colorScale(d.category))
     .attr('class', 'cursor-pointer stroke-base-100 stroke-2')
-    .on('mouseover', function (event: MouseEvent, d: any) {
+    .on('mouseover', (event, d) => {
       tooltip
         .html(
           `
-          <div class="font-bold text-sm">${d.entity}</div>
-          <div class="text-xs">类型: ${d.category}</div>
-          <div class="text-xs">权重: ${d.weight!.toFixed(2)}</div>
-          <div class="text-sm text-primary cursor-pointer mt-1">点击查看完整详情</div>
-        `,
+        <div class="font-bold text-sm">${d.id}</div>
+        <div class="text-xs">类型: ${d.category}</div>
+        <div class="text-xs">权重: ${d.weight.toFixed(2)}</div>
+        <div class="text-sm text-primary cursor-pointer mt-1">点击查看完整详情</div>
+      `,
         )
         .classed('hidden', false)
-        .style('left', event.pageX + 10 + 'px')
-        .style('top', event.pageY + 10 + 'px')
+        .style('left', `${event.pageX + 10}px`)
+        .style('top', `${event.pageY + 10}px`)
     })
-    .on('mousemove', function (event: MouseEvent) {
-      tooltip.style('left', event.pageX + 10 + 'px').style('top', event.pageY + 10 + 'px')
+    .on('mousemove', (event) => {
+      tooltip.style('left', `${event.pageX + 10}px`).style('top', `${event.pageY + 10}px`)
     })
     .on('mouseout', () => tooltip.classed('hidden', true))
-    .on('click', (_event, d: any) => {
-      selectedEntity.value = d.entity
-    })
+    .on('click', (_e, d) => (selectedEntity.value = d.id))
 
   nodeGroup
     .append('text')
-    .text((d: any) => d.entity)
+    .text((d) => d.id)
     .attr('text-anchor', 'middle')
     .attr('dy', '0.35em')
     .attr('class', 'text-xs fill-current pointer-events-none')
 
-  // 布局更新
+  // Tick: 更新实体节点、曲线和标签
   simulation.on('tick', () => {
-    link.attr('d', (d: any) => {
-      let sx = d.source.x,
-        sy = d.source.y,
-        tx = d.target.x,
-        ty = d.target.y
-      const dx = tx - sx,
-        dy = ty - sy,
-        dr = Math.sqrt(dx * dx + dy * dy)
-      // 如果目标在左边，就调换起点和终点，并反向弧度标记
-      let sweep = 1
-      if (tx < sx) {
-        ;[sx, sy, tx, ty] = [tx, ty, sx, sy]
-        sweep = 0
-      }
-      return `M${sx},${sy}A${dr},${dr} 0 0,${sweep} ${tx},${ty}`
+    linkCurves.attr('d', (d) => {
+      const src = allNodes.find((n) => n.id === d.subject)!
+      const mid = allNodes.find((n) => n.id === `mid-${d.index}`)!
+      const tgt = allNodes.find((n) => n.id === d.object)!
+
+      // 1. 计算 src–tgt 中点
+      const mx = (src.x + tgt.x) / 2
+      const my = (src.y + tgt.y) / 2
+
+      // 2. 放大 mid 节点相对于中点的偏移量（factor 越大，曲度越大）
+      const factor = 1.5 // 默认 1; 推荐 1.2 ~ 2 之间调试
+      const cx = mx + (mid.x - mx) * factor
+      const cy = my + (mid.y - my) * factor
+
+      // 3. 二次贝塞尔
+      return `M${src.x},${src.y} Q${cx},${cy} ${tgt.x},${tgt.y}`
     })
 
-    // 更新标签位置到连线中点
+    // 关系文字放 mid
     linkLabels
-      .attr('x', (d: any) => ((d.source as any).x + (d.target as any).x) / 2)
-      .attr('y', (d: any) => ((d.source as any).y + (d.target as any).y) / 2)
+      .attr('x', (d) => {
+        const mid = allNodes.find((n) => n.id === `mid-${d.index}`)!
+        return mid.x
+      })
+      .attr('y', (d) => {
+        const mid = allNodes.find((n) => n.id === `mid-${d.index}`)!
+        return mid.y
+      })
 
-    nodes.forEach((d: any) => {
-      const r = radiusScale(d.weight!)
-      if (d.x - r < 0) {
-        d.x = r
-        d.vx *= -1
-      }
-      if (d.x + r > width) {
-        d.x = width - r
-        d.vx *= -1
-      }
-      if (d.y - r < 0) {
-        d.y = r
-        d.vy *= -1
-      }
-      if (d.y + r > height) {
-        d.y = height - r
-        d.vy *= -1
-      }
-    })
-
-    nodeGroup.attr('transform', (d: any) => `translate(${d.x},${d.y})`)
+    nodeGroup.attr('transform', (d) => `translate(${d.x},${d.y})`)
   })
+
+  // 响应容器尺寸变化
+  const resizeObserver = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      const newW = entry.contentRect.width
+      const newH = entry.contentRect.height
+      svg.attr('width', newW).attr('height', newH)
+      simulation.force('center', d3.forceCenter(newW / 2, newH / 2))
+      simulation.alpha(0.3).restart()
+    }
+  })
+  resizeObserver.observe(container)
 }
 
 // 获取子图函数
