@@ -54,7 +54,7 @@
         <summary class="btn">我的</summary>
         <ul class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-52">
           <li><button @click="openProfileModal">个人资料</button></li>
-          <li><a>学习记录</a></li>
+          <li><button @click="openStudyRecord">学习记录</button></li>
           <li><a>设置</a></li>
         </ul>
       </details>
@@ -75,6 +75,22 @@
         </div>
       </div>
     </teleport>
+
+    <!-- 学习记录模态框 -->
+    <teleport to="body">
+      <div
+        class="modal"
+        :class="{ 'modal-open': showStudyRecordModal }"
+        @click.self="closeStudyRecord"
+      >
+        <div class="modal-box max-w-5xl w-full relative">
+          <button class="btn btn-sm btn-circle absolute right-2 top-2" @click="closeStudyRecord">
+            ✕
+          </button>
+          <StudentStudyRecord />
+        </div>
+      </div>
+    </teleport>
   </div>
 </template>
 
@@ -82,6 +98,7 @@
 import { ref, computed } from 'vue'
 import { useGraphStore } from '@/stores/graphStore'
 import StudentProfile from '@/components/student/StudentProfile.vue'
+import StudentStudyRecord from '@/components/student/StudentStudyRecord.vue'
 
 const emit = defineEmits<{
   (e: 'select-entity', entity: string): void
@@ -146,6 +163,15 @@ function openProfileModal() {
 }
 function closeProfileModal() {
   showProfileModal.value = false
+}
+
+// Study Record Modal 控制
+const showStudyRecordModal = ref(false)
+function openStudyRecord() {
+  showStudyRecordModal.value = true
+}
+function closeStudyRecord() {
+  showStudyRecordModal.value = false
 }
 </script>
 

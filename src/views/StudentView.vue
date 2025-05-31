@@ -26,6 +26,7 @@
       @show-relationships="toggleRelations"
       @show-categories="toggleCategories"
       @show-favorites="toggleFavorites"
+      @show-assessments="toggleAssessments"
     />
 
     <transition name="fade">
@@ -113,6 +114,9 @@ function toggleFavorites() {
 }
 function toggleChat() {
   showChat.value = !showChat.value
+}
+function toggleAssessments() {
+  showAssessment.value = !showAssessment.value
 }
 
 // 决定显示哪个侧边面板
