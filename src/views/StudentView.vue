@@ -4,18 +4,21 @@
     <div class="flex-1 flex flex-col">
       <!-- 监听 select-entity 事件 -->
       <StudentTopNav
-        @select-entity="onSelectEntity"
+        :viewMode="viewMode"
+        @toggle-view="toggleViewMode"
+        @select-entity="onEntitySelected"
         @search-results="onSearchResults"
-        class="bg-base-300"
       />
       <main class="flex-1 p-0 flex">
         <!-- 将 selectedEntity 传入 KnowledgeGraph -->
         <KnowledgeGraph
+          v-if="viewMode === 'knowledge'"
           class="flex-1"
           :zoom="zoom"
           :selectedEntity="selectedEntity"
           :filteredEntities="searchResults"
         />
+        <HeatMap v-else :entities="graphStore.graphData.entities" :zoom="zoom" />
       </main>
     </div>
 
@@ -72,6 +75,8 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import StudentTopNav from '@/components/student/StudentTopNav.vue'
 import KnowledgeGraph from '@/components/graph/KnowledgeGraph.vue'
+import HeatMap from '@/components/graph/HeatMap.vue'
+import { useGraphStore } from '@/stores/graphStore'
 import SideNav from '@/components/student/StudentSideNav.vue'
 import RelationStats from '@/components/student/sideNavComponents/RelationStats.vue'
 import CategoryStats from '@/components/student/sideNavComponents/CategoryStats.vue'
@@ -81,6 +86,7 @@ import Assessment from '@/components/student/sideNavComponents/Assessment.vue'
 import { Bot as botIcon } from 'lucide-vue-next'
 import axios from '@/services/api'
 
+const graphStore = useGraphStore()
 // 缩放状态
 const zoom = ref(1)
 function onZoom(scale: number) {
@@ -96,6 +102,14 @@ function onSearchResults(list: string[]) {
 const selectedEntity = ref<string | null>(null)
 function onSelectEntity(entity: string) {
   selectedEntity.value = entity
+}
+
+// 用 ref 保存当前是知识图谱 还是 热力图
+const viewMode = ref<'knowledge' | 'heatmap'>('knowledge')
+
+// 切换函数
+function toggleViewMode() {
+  viewMode.value = viewMode.value === 'knowledge' ? 'heatmap' : 'knowledge'
 }
 
 // 面板切换

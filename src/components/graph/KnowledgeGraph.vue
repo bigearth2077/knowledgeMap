@@ -2,15 +2,10 @@
   <!-- 包裹图谱与实体详情抽屉 -->
   <div class="relative flex-1 w-full h-full">
     <!-- D3 知识图谱容器 -->
-    <div ref="graphContainer" class="flex-1 w-full h-full bg-base-200 h-full rounded-lg"></div>
+    <div ref="graphContainer" class="flex-1 w-full h-full bg-base-200 rounded-lg"></div>
 
     <!-- 实体详情抽屉 -->
-    <EntityDetail
-      v-if="selectedEntity"
-      :entity="selectedEntity"
-      @close="selectedEntity = null"
-      style="z-index: 100"
-    />
+    <EntityDetail v-if="selectedEntity" :entity="selectedEntity" @close="selectedEntity = null" />
   </div>
 </template>
 
@@ -133,6 +128,23 @@ watch(
   },
 )
 
+// 在 <script setup> 的末尾，紧跟其他 watch 逻辑后面，添加：
+watch(selectedEntity, (val) => {
+  if (val === null) {
+    // 清空上一次的过滤缓存
+    prevFilter.value = []
+    // 用全量数据重绘
+    const fullData = graphStore.graphData
+    if (fullData && graphContainer.value) {
+      drawGraph(fullData)
+      // 并且恢复到当前的 zoom 比例（如果有需要）
+      if (props.zoom !== 1 && zoomBehaviorRef.value && svgRef.value) {
+        svgRef.value.call(zoomBehaviorRef.value.scaleTo as any, props.zoom)
+      }
+    }
+  }
+})
+
 /** 渲染主流程 **/
 function drawGraph(data: GraphResponse) {
   const container = graphContainer.value!
@@ -203,13 +215,13 @@ function drawGraph(data: GraphResponse) {
     .force('charge', d3.forceManyBody().strength(-200))
     .force(
       'collision',
-      d3.forceCollide().radius((d: any) => (d.isMid ? 8 : radiusScale(d.weight) + 6)),
+      d3.forceCollide().radius((d: any) => (d.isMid ? 8 : radiusScale(d.weight) + 8)),
     )
     .force('center', d3.forceCenter(width / 2, height / 2))
     .force('x', d3.forceX(width / 2).strength(0.1))
     .force('y', d3.forceY(height / 2).strength(0.1))
-    .alphaTarget(0.3)
-    .alphaDecay(0.02)
+    .alphaTarget(0.1)
+    .alphaDecay(0.05)
     .velocityDecay(0.5)
 
   // 画布容器
@@ -316,7 +328,11 @@ function drawGraph(data: GraphResponse) {
       tooltip.style('left', `${event.pageX + 10}px`).style('top', `${event.pageY + 10}px`)
     })
     .on('mouseout', () => tooltip.classed('hidden', true))
-    .on('click', (_e, d) => (selectedEntity.value = d.id))
+    .on('click', (_e, d: any) => {
+      selectedEntity.value = d.id
+      // 用已有的 doFilterDraw 过滤，只显示和当前节点有关的子图
+      doFilterDraw([d.id])
+    })
 
   nodeGroup
     .append('text')

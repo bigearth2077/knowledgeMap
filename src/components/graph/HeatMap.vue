@@ -1,271 +1,355 @@
 <template>
-  <div ref="heatmapRef" class="heatmap-container">
-    <div class="filter-container">
-      <label>分类筛选：</label>
-      <select v-model="selectedCategory" @change="updateChart">
-        <option value="all">全部</option>
-        <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
-      </select>
+  <div class="relative flex-1 w-full h-full">
+    <div class="flex flex-col w-full h-full bg-base-200 rounded-lg">
+      <!-- 3D场景容器 -->
+      <div class="flex-1 w-full" ref="container"></div>
     </div>
+
+    <!-- 提示框 -->
+    <div
+      ref="tooltip"
+      class="absolute hidden px-3 py-2 text-sm bg-base-100 border rounded-lg shadow-lg pointer-events-none"
+      style="z-index: 100"
+    ></div>
+
+    <!-- 实体详情抽屉 -->
+    <EntityDetail v-if="selectedEntity" :entity="selectedEntity" @close="selectedEntity = null" />
   </div>
 </template>
 
-<script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
-import * as echarts from 'echarts'
-import axios from 'axios'
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import * as THREE from 'three'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
+import type { Entity } from '@/stores/graphStore'
+import EntityDetail from '@/components/graph/EntityDetail.vue'
+import * as d3 from 'd3'
 
-const heatmapRef = ref(null)
-let chartInstance = null
-const categories = ref([])
-const selectedCategory = ref('all')
-const originalData = ref([])
+const props = defineProps<{
+  entities: Entity[]
+  zoom?: number
+}>()
 
-// 处理数据为矩阵格式
-const processData = (data) => {
-  const categoryMap = data.reduce((acc, item) => {
-    if (!acc[item.category]) {
-      acc[item.category] = []
-    }
-    acc[item.category].push(item)
-    return acc
-  }, {})
+const isDarkMode = computed(() => document.documentElement.getAttribute('data-theme') === 'dark')
+const bgColor = computed(() => (isDarkMode.value ? '#1D232A' : '#F8F9FA'))
+const textColor = computed(() => (isDarkMode.value ? '#A6ADBA' : '#2A303C'))
 
-  // 对每个分类按热度排序
-  Object.values(categoryMap).forEach((category) => {
-    category.sort((a, b) => b.count - a.count)
-  })
+const container = ref<HTMLElement>()
+const tooltip = ref<HTMLElement>()
 
-  // 获取所有分类和最大行数
-  const categories = Object.keys(categoryMap)
-  const maxRows = Math.max(...Object.values(categoryMap).map((c) => c.length))
+const selectedEntity = ref<Entity | null>(null)
+const colorScale = d3.scaleOrdinal(d3.schemeTableau10)
 
-  // 生成二维矩阵数据
-  const heatData = []
-  categories.forEach((category, xIndex) => {
-    categoryMap[category].forEach((item, yIndex) => {
-      heatData.push({
-        value: [xIndex, yIndex, item.count],
-        name: item.entity,
-        rawData: item,
-      })
+// Three.js 相关变量
+let scene: THREE.Scene
+let camera: THREE.PerspectiveCamera
+let renderer: THREE.WebGLRenderer
+let controls: OrbitControls
+let cubes: THREE.Mesh[] = []
+
+// 初始化3D场景
+const init = () => {
+  if (!container.value) return
+
+  scene = new THREE.Scene()
+  scene.background = new THREE.Color(bgColor.value)
+
+  // 创建相机
+  const aspect = container.value.clientWidth / container.value.clientHeight
+  camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000)
+  camera.position.set(0, 100, 100)
+  camera.lookAt(0, 0, 0)
+
+  // 创建渲染器
+  renderer = new THREE.WebGLRenderer({ antialias: true })
+  renderer.setSize(container.value.clientWidth, container.value.clientHeight)
+  container.value.appendChild(renderer.domElement)
+
+  // 添加轨道控制器
+  controls = new OrbitControls(camera, renderer.domElement)
+  controls.enableDamping = true
+  controls.dampingFactor = 0.05
+  controls.minDistance = 10
+  controls.maxDistance = 200
+  controls.minPolarAngle = Math.PI / 6
+  controls.maxPolarAngle = Math.PI / 2
+  controls.enablePan = true
+  controls.screenSpacePanning = true
+  controls.enableZoom = true
+  controls.zoomSpeed = 0.5
+
+  if (props.zoom) {
+    const targetZoom = 100 / props.zoom
+    camera.position.setLength(targetZoom)
+  }
+
+  // 添加环境光和方向光
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
+  scene.add(ambientLight)
+
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
+  directionalLight.position.set(10, 20, 10)
+  scene.add(directionalLight)
+
+  // 绘制数据
+  drawCubes()
+
+  // 动画循环
+  animate()
+}
+
+// 绘制立方体
+const drawCubes = () => {
+  cubes.forEach((cube) => scene.remove(cube))
+  cubes = []
+
+  const maxHeight = 20
+  const maxCount = Math.max(...props.entities.map((e) => e.count))
+  const areaSize = 100
+
+  // 创建网格布局
+  const gridSize = Math.ceil(Math.sqrt(props.entities.length))
+  const cellSize = areaSize / gridSize
+  const offset = -areaSize / 2 // 居中偏移
+
+  props.entities.forEach((entity, index) => {
+    // 计算网格位置
+    const row = Math.floor(index / gridSize)
+    const col = index % gridSize
+
+    // 添加随机偏移，但保持在网格单元内
+    const jitterX = (Math.random() - 0.5) * cellSize * 0.5
+    const jitterZ = (Math.random() - 0.5) * cellSize * 0.5
+
+    // 计算高度（使用对数比例）
+    const width = 5
+    const depth = 5
+    const height = (Math.log(entity.count + 1) / Math.log(maxCount + 1)) * maxHeight
+
+    // 创建立方体
+    const geometry = new THREE.BoxGeometry(width, height, depth)
+    const material = new THREE.MeshPhongMaterial({
+      color: colorScale(entity.category),
+      transparent: true,
+      opacity: 0.8,
     })
+    const cube = new THREE.Mesh(geometry, material)
+    // 添加标记，用于射线检测时识别
+    cube.userData = {
+      ...entity,
+      isColumn: true, // 添加标记表示这是柱子
+    }
+
+    // 设置位置（网格位置 + 随机偏移）
+    cube.position.set(
+      offset + col * cellSize + jitterX,
+      height / 2,
+      offset + row * cellSize + jitterZ,
+    )
+
+    // 创建始终面向相机的文本
+    const text = createTextSprite(
+      entity.entity.slice(0, 5) + (entity.entity.length > 5 ? '...' : ''),
+    )
+    // 将文本放在柱子正面偏上位置
+    text.position.set(0, height / 2 + 1, 0)
+    cube.add(text)
+
+    scene.add(cube)
+    cubes.push(cube)
+  })
+}
+
+const createTextSprite = (text: string) => {
+  const canvas = document.createElement('canvas')
+  const context = canvas.getContext('2d')!
+  canvas.width = 256
+  canvas.height = 64
+
+  // 设置更大的字体和居中对齐
+  context.fillStyle = textColor.value
+  context.font = 'bold 36px Arial' // 更大的字体
+  context.textAlign = 'center' // 水平居中
+  context.textBaseline = 'middle' // 垂直居中
+  // 添加文本描边以提高可读性
+  context.strokeStyle = isDarkMode.value ? '#000000' : '#ffffff'
+  context.lineWidth = 3
+  context.strokeText(text, canvas.width / 2, canvas.height / 2)
+  context.fillText(text, canvas.width / 2, canvas.height / 2)
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.minFilter = THREE.LinearFilter // 改善文本清晰度
+  texture.magFilter = THREE.LinearFilter
+  const spriteMaterial = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+  })
+  const sprite = new THREE.Sprite(spriteMaterial)
+  sprite.scale.set(8, 2, 1)
+
+  // 禁用射线检测，使鼠标事件完全穿透
+  sprite.raycast = () => {}
+
+  return sprite
+}
+
+watch(
+  () => props.zoom,
+  (newScale) => {
+    if (controls && camera) {
+      const currentZoom = controls.target.distanceTo(camera.position)
+      const targetZoom = 100 / (newScale || 1) // 假设基准距离是100
+      const delta = targetZoom / currentZoom
+
+      camera.position.multiplyScalar(delta)
+      controls.update()
+    }
+  },
+)
+
+// 处理鼠标悬停
+const raycaster = new THREE.Raycaster()
+const mouse = new THREE.Vector2()
+
+const onMouseMove = (event: MouseEvent) => {
+  if (!container.value || !tooltip.value) return
+
+  const rect = container.value.getBoundingClientRect()
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+
+  raycaster.setFromCamera(mouse, camera)
+  const intersects = raycaster.intersectObjects(cubes)
+
+  if (intersects.length > 0 && intersects[0].object.userData.isColumn) {
+    const entity = intersects[0].object.userData
+    tooltip.value.innerHTML = `
+      <div class="font-bold">${entity.entity}</div>
+      <div>类型: ${entity.category}</div>
+      <div>访问次数: ${entity.count}</div>
+      <div class="text-sm text-primary cursor-pointer mt-1">点击查看完整详情</div>
+    `
+    tooltip.value.style.left = `${event.clientX + 10}px`
+    tooltip.value.style.top = `${event.clientY + 10}px`
+    tooltip.value.classList.remove('hidden')
+  } else {
+    tooltip.value.classList.add('hidden')
+  }
+}
+
+// 点击事件处理
+const onClick = (event: MouseEvent) => {
+  if (!container.value) return
+
+  const rect = container.value.getBoundingClientRect()
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+
+  raycaster.setFromCamera(mouse, camera)
+  const columns = cubes.filter((cube) => (cube.userData as any).isColumn)
+  const intersects = raycaster.intersectObjects(columns)
+
+  if (intersects.length > 0) {
+    selectedEntity.value = intersects[0].object.userData.entity // 直接使用实体名称
+  }
+}
+
+// 动画循环
+const animate = () => {
+  requestAnimationFrame(animate)
+  controls.update()
+
+  // 更新所有文本精灵的朝向
+  cubes.forEach((cube) => {
+    const sprite = cube.children[0] as THREE.Sprite
+    if (sprite) {
+      // 获取相机位置
+      const cameraPos = new THREE.Vector3()
+      camera.getWorldPosition(cameraPos)
+
+      // 获取精灵的世界坐标
+      const spritePos = new THREE.Vector3()
+      sprite.getWorldPosition(spritePos)
+
+      // 计算相机到精灵的方向向量
+      const dir = new THREE.Vector3().subVectors(cameraPos, spritePos).normalize()
+
+      // 使用 lookAt，但保持 Y 轴垂直
+      const up = new THREE.Vector3(0, 1, 0)
+      const right = new THREE.Vector3().crossVectors(up, dir).normalize()
+      const newUp = new THREE.Vector3().crossVectors(dir, right)
+
+      // 构建旋转矩阵
+      const rotationMatrix = new THREE.Matrix4().makeBasis(right, newUp, dir)
+      sprite.quaternion.setFromRotationMatrix(rotationMatrix)
+
+      // 抵消任何 Z 轴旋转，保持文本正向
+      const euler = new THREE.Euler().setFromQuaternion(sprite.quaternion)
+      euler.z = 0
+      sprite.quaternion.setFromEuler(euler)
+    }
   })
 
-  return {
-    categories,
-    maxRows,
-    heatData,
-  }
+  renderer.render(scene, camera)
 }
 
-const initChart = async () => {
-  const { data } = await axios.get('/api/graph')
-  originalData.value = data.entities
-  categories.value = [...new Set(data.entities.map((item) => item.category))]
+// 处理窗口大小变化
+const onResize = () => {
+  if (!container.value) return
 
-  // 数据过滤
-  const filteredData =
-    selectedCategory.value === 'all'
-      ? originalData.value
-      : originalData.value.filter((item) => item.category === selectedCategory.value)
+  const width = container.value.clientWidth
+  const height = container.value.clientHeight
 
-  // 处理数据为矩阵格式
-  const { categories: axisCategories, maxRows, heatData } = processData(filteredData)
-
-  const option = {
-    title: {
-      text: '知识节点访问热力图',
-      subtext: '分类维度 × 热度排名',
-      left: 'center',
-    },
-    tooltip: {
-      formatter: (params) => {
-        const data = params.data.rawData
-        return `
-          <div class="tooltip-content">
-            <h4>${data.entity}</h4>
-            <p>分类：${data.category}</p>
-            <p>访问次数：${data.count}</p>
-            <p>排名：${params.value[1] + 1}</p>
-          </div>
-        `
-      },
-    },
-    xAxis: {
-      type: 'category',
-      name: '知识分类',
-      data: axisCategories,
-      axisLabel: {
-        rotate: 45,
-        interval: 0,
-      },
-    },
-    yAxis: {
-      type: 'category',
-      name: '热度排名',
-      inverse: true,
-      data: Array.from({ length: maxRows }, (_, i) => i + 1),
-      axisLabel: {
-        formatter: (value) => `TOP ${value}`,
-      },
-    },
-    visualMap: {
-      min: 0,
-      max: Math.max(...filteredData.map((item) => item.count)),
-      calculable: true,
-      orient: 'vertical',
-      right: 30,
-      top: 'center',
-      inRange: {
-        color: [
-          '#fff7fb',
-          '#ece7f2',
-          '#d0d1e6',
-          '#a6bddb',
-          '#74a9cf',
-          '#3690c0',
-          '#0570b0',
-          '#045a8d',
-          '#023858',
-        ],
-      },
-    },
-    series: [
-      {
-        type: 'heatmap',
-        data: heatData,
-        itemStyle: {
-          borderWidth: 1,
-          borderColor: '#fff',
-        },
-        label: {
-          show: true,
-          formatter: ({ data }) => {
-            const name = data.name
-            return name.length > 8 ? `${name.substring(0, 7)}...` : name
-          },
-          fontSize: 10,
-          align: 'center',
-          verticalAlign: 'middle',
-          color: (params) => {
-            try {
-              // 统一处理颜色格式
-              let color = params.color
-
-              // 转换rgba为hex格式（假设透明度为1）
-              if (color.startsWith('rgba')) {
-                const rgba = color.match(/(\d+)/g)
-                const hex = rgba
-                  .slice(0, 3)
-                  .map((n) => parseInt(n).toString(16).padStart(2, '0'))
-                  .join('')
-                color = `#${hex}`
-              }
-
-              // 处理简写格式（如#fff）
-              if (color.length === 4) {
-                color =
-                  '#' +
-                  color
-                    .slice(1)
-                    .split('')
-                    .map((c) => c + c)
-                    .join('')
-              }
-
-              // 解析HEX颜色
-              const hex = color.replace('#', '')
-              const r = parseInt(hex.substring(0, 2), 16)
-              const g = parseInt(hex.substring(2, 4), 16)
-              const b = parseInt(hex.substring(4, 6), 16)
-
-              // 计算亮度（使用WCAG标准公式）
-              const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
-
-              // 动态阈值（深色背景用白字，浅色用黑字）
-              return luminance > 0.6 ? '#333' : '#fff'
-            } catch (e) {
-              console.warn('颜色解析失败:', e)
-              return '#333' // 默认颜色
-            }
-          },
-          textStyle: {
-            fontWeight: 'bold',
-            textShadowColor: 'rgba(0,0,0,0.3)',
-            textShadowBlur: 2,
-          },
-        },
-        emphasis: {
-          itemStyle: {
-            shadowBlur: 10,
-            shadowColor: 'rgba(0,0,0,0.3)',
-          },
-        },
-      },
-    ],
-    dataZoom: [
-      {
-        type: 'slider',
-        show: true,
-        yAxisIndex: 0,
-        right: 15,
-        start: 0,
-        end: 100,
-      },
-      {
-        type: 'inside',
-        yAxisIndex: 0,
-      },
-    ],
-  }
-
-  chartInstance.setOption(option)
+  camera.aspect = width / height
+  camera.updateProjectionMatrix()
+  renderer.setSize(width, height)
 }
 
-const updateChart = () => {
-  // 先清空实例再重新初始化
-  if (chartInstance) {
-    chartInstance.dispose()
+// 添加主题监听
+const onThemeChange = () => {
+  if (scene) {
+    scene.background = new THREE.Color(bgColor.value)
+    // 重新绘制带有新文本颜色的柱子
+    drawCubes()
   }
-  chartInstance = echarts.init(heatmapRef.value)
-  initChart()
 }
 
 onMounted(() => {
-  chartInstance = echarts.init(heatmapRef.value)
-  initChart()
-  window.addEventListener('resize', () => chartInstance.resize())
+  init()
+  window.addEventListener('resize', onResize)
+  container.value?.addEventListener('mousemove', onMouseMove)
+  container.value?.addEventListener('click', onClick)
+
+  // 监听主题变化
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.attributeName === 'data-theme') {
+        onThemeChange()
+      }
+    })
+  })
+
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme'],
+  })
 })
 
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', () => chartInstance.resize())
-  chartInstance.dispose()
+onUnmounted(() => {
+  window.removeEventListener('resize', onResize)
+  container.value?.removeEventListener('mousemove', onMouseMove)
+  container.value?.removeEventListener('click', onClick)
+  renderer.dispose()
+  cubes.forEach((cube) => cube.geometry.dispose())
 })
 </script>
 
 <style scoped>
-.heatmap-container {
-  width: 100%;
-  height: calc(100vh - 120px);
-  min-height: 600px;
-  position: relative;
-}
-
-.filter-container {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  z-index: 100;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 10px;
+.legend-gradient {
+  width: 120px;
+  height: 16px;
+  background: linear-gradient(to right, #fff5eb, #fd8d3c);
   border-radius: 4px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-}
-
-.filter-container select {
-  padding: 5px;
-  border-radius: 4px;
-  border: 1px solid #ddd;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 </style>

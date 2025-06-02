@@ -160,5 +160,4 @@
   function stripJudgement(judgement: string): string {
     return judgement.replace(/^[A-D]\.\s*/, '')
   }
-  </script>
-  
+  </script>  

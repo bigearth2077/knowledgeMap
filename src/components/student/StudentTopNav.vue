@@ -9,7 +9,9 @@
     <!-- 右侧控件 -->
     <div class="navbar-end gap-4 flex items-center">
       <!-- 学习仪表盘按钮 -->
-      <button class="btn btn-outline btn-primary">学习仪表盘</button>
+      <button class="btn btn-outline btn-primary" @click="onToggleView">
+        {{ buttonLabel }}
+      </button>
 
       <!-- 搜索框 -->
       <div class="relative">
@@ -18,6 +20,7 @@
           type="text"
           placeholder="搜索实体名称"
           class="input input-bordered w-70"
+          :disabled="props.viewMode === 'heatmap'"
           @input="onSearch"
           @focus="openResults = true"
           @blur="onBlur"
@@ -100,7 +103,15 @@ import { useGraphStore } from '@/stores/graphStore'
 import StudentProfile from '@/components/student/StudentProfile.vue'
 import StudentStudyRecord from '@/components/student/StudentStudyRecord.vue'
 
+// 定义接收父组件传来的 prop：
+const props = defineProps<{
+  /** 当前视图模式：'knowledge'（知识图谱） 或 'heatmap'（热力图） */
+  viewMode: 'knowledge' | 'heatmap'
+}>()
+
 const emit = defineEmits<{
+  /** 点击切换视图时触发，由父组件来切换 viewMode */
+  (e: 'toggle-view'): void
   (e: 'select-entity', entity: string): void
   (e: 'search-results', list: string[]): void
 }>()
@@ -111,6 +122,16 @@ const searchTerm = ref('')
 const openResults = ref(false)
 // 引入 Pinia store，获取全局图数据
 const graphStore = useGraphStore()
+
+// 根据 prop.viewMode 计算按钮要显示的文字
+const buttonLabel = computed(() => {
+  return props.viewMode === 'knowledge' ? '知识图谱' : '热力图'
+})
+
+// 点击按钮时，派发 toggle-view，让父组件去真正切换
+function onToggleView() {
+  emit('toggle-view')
+}
 
 // Badge 颜色映射
 const badgeClassMap: Record<string, string> = {

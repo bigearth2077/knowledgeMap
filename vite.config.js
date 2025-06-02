@@ -14,7 +14,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ['@element-plus/icons-vue'],
+    include: ['@element-plus/icons-vue', 'three'],
   },
   server: {
     fs: {

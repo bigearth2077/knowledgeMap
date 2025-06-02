@@ -39,12 +39,23 @@ api.interceptors.response.use(
 // 辅助函数
 async function refreshTokens() {
   const auth = useAuthStore()
-  const { data } = await axios.post('/api/refresh', {
-    refresh_token: auth.refreshToken,
-  })
+
+  // 发送纯字符串格式的 refresh token
+  const { data } = await axios.post(
+    '/api/refresh',
+    // JSON.stringify 直接发送纯字符串
+    JSON.stringify(auth.refreshToken),
+    {
+      headers: {
+        'Content-Type': 'application/json', // 保持 Content-Type 不变
+      },
+    },
+  )
+
+  // 只更新 access token（后端不会返回新的 refresh token）
   auth.updateTokens({
     access_token: data.access_token,
-    refresh_token: data.refresh_token,
+    // 保留原有 refresh token（不需要更新）
   })
 }
 
