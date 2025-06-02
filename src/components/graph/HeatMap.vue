@@ -47,6 +47,10 @@ let renderer: THREE.WebGLRenderer
 let controls: OrbitControls
 let cubes: THREE.Mesh[] = []
 
+// 首先添加一些动画相关的状态变量
+const clock = new THREE.Clock() // 用于跟踪时间
+let pointLight: THREE.PointLight // 用于动态光效
+
 // 初始化3D场景
 const init = () => {
   if (!container.value) return
@@ -90,6 +94,11 @@ const init = () => {
   const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
   directionalLight.position.set(10, 20, 10)
   scene.add(directionalLight)
+
+  // 添加点光源，用于动态效果
+  pointLight = new THREE.PointLight(0xffffff, 0.8, 100)
+  pointLight.position.set(0, 30, 0)
+  scene.add(pointLight)
 
   // 绘制数据
   drawCubes()
@@ -138,6 +147,9 @@ const drawCubes = () => {
     cube.userData = {
       ...entity,
       isColumn: true, // 添加标记表示这是柱子
+      originalHeight: height,
+      phaseOffset: Math.random() * Math.PI * 2, // 随机相位偏移
+      frequency: 0.2 + Math.random() * 0.3, // 随机频率
     }
 
     // 设置位置（网格位置 + 随机偏移）
@@ -259,8 +271,39 @@ const animate = () => {
   requestAnimationFrame(animate)
   controls.update()
 
+  const time = clock.getElapsedTime()
+
+  // 更新点光源位置
+  const lightRadius = 50
+  pointLight.position.x = Math.cos(time * 0.5) * lightRadius
+  pointLight.position.z = Math.sin(time * 0.5) * lightRadius
+
   // 更新所有文本精灵的朝向
   cubes.forEach((cube) => {
+    const { originalHeight, phaseOffset, frequency, category } = cube.userData
+
+    // 计算高度波动
+    const amplitude = originalHeight * 0.1 // 波动幅度为原高度的10%
+    const wave = Math.sin(time * frequency + phaseOffset) * amplitude
+    const newHeight = originalHeight + wave
+
+    // 更新柱子高度
+    cube.scale.y = newHeight / originalHeight
+    cube.position.y = newHeight / 2
+
+    // 更新柱子颜色
+    const hue = colorScale(category)
+    const color = new THREE.Color(hue)
+    // 减小饱和度变化范围
+    const saturation = 0.7 + Math.sin(time * 0.5 + phaseOffset) * 0.1 // 频率从 2 降至 0.5，幅度从 0.3 降至 0.1
+    color.offsetHSL(0, 0, Math.sin(time * 0.25 + phaseOffset) * 0.05) // 频率从 1 降至 0.25，幅度从 0.1 降至 0.05
+    ;(cube.material as THREE.MeshPhongMaterial).color = color
+    ;(cube.material as THREE.MeshPhongMaterial).emissive.setHSL(
+      color.getHSL({ h: 0, s: 0, l: 0 }).h,
+      saturation,
+      0.1 + Math.sin(time * 0.75 + phaseOffset) * 0.02, // 频率从 3 降至 0.75，幅度从 0.05 降至 0.02
+    )
+
     const sprite = cube.children[0] as THREE.Sprite
     if (sprite) {
       // 获取相机位置
