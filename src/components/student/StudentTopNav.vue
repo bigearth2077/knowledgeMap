@@ -58,7 +58,7 @@
         <ul class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-52">
           <li><button @click="openProfileModal">个人资料</button></li>
           <li><button @click="openStudyRecord">学习记录</button></li>
-          <li><a>设置</a></li>
+          <li><button @click="onLogout">登出</button></li>
         </ul>
       </details>
     </div>
@@ -99,7 +99,10 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { useGraphStore } from '@/stores/graphStore'
+
 import StudentProfile from '@/components/student/StudentProfile.vue'
 import StudentStudyRecord from '@/components/student/StudentStudyRecord.vue'
 
@@ -122,6 +125,10 @@ const searchTerm = ref('')
 const openResults = ref(false)
 // 引入 Pinia store，获取全局图数据
 const graphStore = useGraphStore()
+
+// 引入 authStore 和 router
+const authStore = useAuthStore()
+const router = useRouter()
 
 // 根据 prop.viewMode 计算按钮要显示的文字
 const buttonLabel = computed(() => {
@@ -193,6 +200,13 @@ function openStudyRecord() {
 }
 function closeStudyRecord() {
   showStudyRecordModal.value = false
+}
+
+// 登出
+function onLogout() {
+  authStore.logout()
+  // 登出后跳转到登录页
+  router.push('/')
 }
 </script>
 

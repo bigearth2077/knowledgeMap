@@ -6,7 +6,7 @@
       <StudentTopNav
         :viewMode="viewMode"
         @toggle-view="toggleViewMode"
-        @select-entity="onEntitySelected"
+        @select-entity="onSelectEntity"
         @search-results="onSearchResults"
       />
       <main class="flex-1 p-0 flex">
@@ -147,9 +147,23 @@ const panelComponent = computed(() => {
   }
 })
 
-// Heartbeat: periodically POST to /api/heartbeat to keep session alive
+// ================= Heartbeat & 活跃判定 =================
+const ACTIVE_WINDOW = 5 * 60 * 1000 // 5 分钟内算活跃
+const HEARTBEAT_INTERVAL = 60 * 1000 // 1 分钟一次
+
+const lastActivity = ref(Date.now())
+const activityEvents = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'] as const
+
+function markActive() {
+  lastActivity.value = Date.now()
+}
+
 let heartbeatTimer: number | null = null
-async function sendHeartbeat() {
+
+async function sendHeartbeatIfActive() {
+  if (document.hidden) return
+  if (Date.now() - lastActivity.value > ACTIVE_WINDOW) return
+
   try {
     await axios.post('/api/heartbeat')
   } catch (err) {
@@ -158,16 +172,17 @@ async function sendHeartbeat() {
 }
 
 onMounted(() => {
-  // Initial heartbeat
-  sendHeartbeat()
-  // Repeat every 60 seconds
-  heartbeatTimer = window.setInterval(sendHeartbeat, 60000)
+  activityEvents.forEach((evt) => window.addEventListener(evt, markActive, { passive: true }))
+
+  // 立即尝试一次（若用户此时正活跃）
+  sendHeartbeatIfActive()
+
+  heartbeatTimer = window.setInterval(sendHeartbeatIfActive, HEARTBEAT_INTERVAL)
 })
 
 onBeforeUnmount(() => {
-  if (heartbeatTimer) {
-    clearInterval(heartbeatTimer)
-  }
+  activityEvents.forEach((evt) => window.removeEventListener(evt, markActive))
+  if (heartbeatTimer) clearInterval(heartbeatTimer)
 })
 </script>
 
