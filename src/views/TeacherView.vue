@@ -24,6 +24,17 @@
 <script setup>
 import TopNav from '@/components/TopNav.vue'
 import SideNav from '@/components/SideNav.vue'
+import { onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
+
+onMounted(() => {
+  // 如果当前路径就是 /teacher，则跳转到知识图谱页面
+  if (router.currentRoute.value.path === '/teacher') {
+    router.push('/teacher/knowledge-graph')
+  }
+})
 </script>
 
 <style scoped>

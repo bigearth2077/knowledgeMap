@@ -1,4 +1,3 @@
-<!-- 父组件 ParentComponent.vue -->
 <template>
   <div class="study-container">
     <StudyOverView
@@ -25,7 +24,7 @@ import StudyOverView from './study/StudyOverView.vue'
 import StudySpecialized from './study/StudySpecialized.vue'
 import StudentDetail from './study/StudentDetail.vue'
 
-const currentView = ref('overview')
+const currentView = ref('specialized')
 const selectedStudentId = ref(null)
 const chartData = reactive({
   A: 0,

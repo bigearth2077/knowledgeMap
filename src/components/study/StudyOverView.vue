@@ -31,7 +31,7 @@
 import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
-import axios from 'axios'
+import axios from '@/services/api'
 
 // 组件状态
 const chartRef = ref(null)
@@ -47,12 +47,45 @@ const chartData = reactive({
   comment_ai: '',
 })
 
+// 添加缓存相关函数
+const CACHE_KEY = 'study_overview_data'
+const CACHE_EXPIRY = 1000 * 60 * 30 // 30分钟缓存
+
+const getCachedData = () => {
+  const cached = localStorage.getItem(CACHE_KEY)
+  if (!cached) return null
+
+  const { data, timestamp } = JSON.parse(cached)
+  if (Date.now() - timestamp > CACHE_EXPIRY) {
+    localStorage.removeItem(CACHE_KEY)
+    return null
+  }
+  return data
+}
+
+const setCacheData = (data) => {
+  localStorage.setItem(
+    CACHE_KEY,
+    JSON.stringify({
+      data,
+      timestamp: Date.now(),
+    }),
+  )
+}
+
 // 获取学情数据
 const fetchStudyData = async () => {
+  const cachedData = getCachedData()
+  if (cachedData) {
+    Object.assign(chartData, cachedData)
+    loading.value = false
+    return
+  }
+
   try {
     const res = await axios.get('/api/teacher/study')
     Object.assign(chartData, res.data)
-    console.log(res.data)
+    setCacheData(res.data)
   } catch (error) {
     ElMessage.error('数据加载失败')
     console.error('接口请求错误:', error)

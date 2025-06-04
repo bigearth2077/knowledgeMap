@@ -28,8 +28,12 @@ export const useGraphStore = defineStore('graph', {
     graphData: null as GraphResponse | null,
     loading: false as boolean,
     error: '' as string,
+    zoom: 1,
   }),
   actions: {
+    setZoom(scale: number) {
+      this.zoom = scale
+    },
     async fetchGraph() {
       this.loading = true
       this.error = ''

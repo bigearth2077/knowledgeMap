@@ -1,4 +1,3 @@
-<!-- TeacherInfo.vue -->
 <template>
   <el-dialog v-model="visible" title="个人信息" width="600px" :close-on-click-modal="false">
     <el-form
@@ -21,10 +20,13 @@
         </el-select>
       </el-form-item>
 
-      <el-form-item label="手机号" prop="phone">
-        <el-input v-model="formData.phone" />
+      <!-- 将“手机号”改为“邮箱” -->
+      <el-form-item label="邮箱" prop="email">
+        <el-input v-model="formData.email" />
       </el-form-item>
 
+      <!-- 我的班级 分隔线 -->
+      <el-divider>我的班级</el-divider>
       <!-- 班级信息 -->
       <div class="class-list">
         <div v-for="(cls, index) in formData.classes" :key="cls.classCode" class="class-item">
@@ -58,7 +60,7 @@
 import { ref, watch } from 'vue'
 import type { FormInstance } from 'element-plus'
 import { ElMessage } from 'element-plus'
-import axios from 'axios'
+import axios from '@/services/api'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -71,36 +73,38 @@ const formRef = ref<FormInstance>()
 const formData = ref({
   name: '',
   sex: 0,
-  phone: '',
+  email: '',
   classes: [] as Array<{ className: string; classCode: string }>,
 })
 
-// 表单验证规则
+// 表单验证规则：将手机号规则改为邮箱规则
 const rules = {
   name: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
-  phone: [
-    { required: true, message: '请输入手机号', trigger: 'blur' },
-    { pattern: /^1[3-9]\d{9}$/, message: '手机号格式不正确', trigger: 'blur' },
+  email: [
+    { required: true, message: '请输入邮箱', trigger: 'blur' },
+    { type: 'email', message: '邮箱格式不正确', trigger: 'blur' },
   ],
 }
 
 // 获取教师信息
 const fetchData = async () => {
   try {
-    const { data } = await axios.get('/api/teacher')
+    const response = await axios.get('/api/teacher')
+    const data = response.data
 
-    // 添加安全校验
-    if (!data?.data.classes) {
+    // 当后端直接返回 { name, email, classes } 时，classes 可能不存在或非数组，此处做安全校验
+    if (!Array.isArray(data.classes)) {
       console.error('接口返回数据结构异常:', data)
       ElMessage.error('数据格式错误')
       return
     }
 
     formData.value = {
-      name: data.data.name || '',
-      sex: data.data.sex ?? 0, // 使用空值合并运算符
-      phone: data.data.phone || '',
-      classes: (data.data.classes || []).map((c) => ({
+      name: data.name || '',
+      // 如果后端没有 sex 字段，保持默认 0
+      sex: typeof data.sex === 'number' ? data.sex : 0,
+      email: data.email || '',
+      classes: data.classes.map((c: any) => ({
         className: c.className || '未命名班级',
         classCode: c.classCode || '',
       })),
@@ -115,10 +119,12 @@ const fetchData = async () => {
 const submitForm = async () => {
   try {
     await formRef.value?.validate()
+    // 这里直接把 formData.value 传给后端，后端会接收 name、sex、email、classes
     await axios.put('/api/teacher', formData.value)
     ElMessage.success('修改成功')
     visible.value = false
   } catch (error) {
+    console.error('提交失败', error)
     ElMessage.error('修改失败')
   }
 }

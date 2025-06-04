@@ -23,9 +23,14 @@ const routes = [
     children: [
       {
         path: 'knowledge-graph',
-        component: () => import('../components/graph/KnowledgeGraph.vue'),
+        component: () => import('../views/KnowledgeGraphView.vue'),
       },
-      { path: 'heatmap', component: () => import('../components/graph/HeatMap.vue') },
+      {
+        path: 'heatmap',
+        name: 'heatmap',
+        component: () => import('../views/HeatMapView.vue'),
+        props: true, // 添加这行以支持 props 传递
+      },
       { path: 'study-stats', component: () => import('../components/StudyStats.vue') },
       { path: 'question', component: () => import('../components/Question.vue') },
       { path: 'graph-manage', component: () => import('../components/GraphManage.vue') },
@@ -37,11 +42,6 @@ const routes = [
     component: () => import('../views/StudentView.vue'),
     meta: { requiresAuth: true, role: 'student' },
     children: [],
-  },
-  {
-    path: '/about',
-    name: 'about',
-    component: () => import('../views/AboutView.vue'),
   },
 ]
 

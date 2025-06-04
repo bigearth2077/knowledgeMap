@@ -3,8 +3,8 @@
   <el-card class="specialized-card">
     <template #header>
       <div class="card-header">
-        <el-button style="margin-right: 2%" icon="ArrowLeft" @click="$emit('back')"
-          >返回总览</el-button
+        <el-button style="margin-right: 2%" type="primary" @click="$emit('back')"
+          >查看学情总览</el-button
         >
         <span>班级学生列表</span>
       </div>
@@ -25,59 +25,69 @@
     </el-select>
 
     <el-table :data="students" highlight-current-row @row-click="handleRowClick">
-      <el-table-column prop="number" label="学号" width="180" />
+      <el-table-column prop="id" label="学号" width="180" />
       <el-table-column prop="name" label="姓名" />
       <el-table-column prop="major" label="专业" />
-      <el-table-column label="性别">
-        <template #default="{ row }">
-          {{ row.sex === 0 ? '男' : '女' }}
-        </template>
-      </el-table-column>
+      <el-table-column prop="email" label="邮箱" />
     </el-table>
   </el-card>
 </template>
 
 <script setup>
 import { ref, onMounted, watchEffect } from 'vue'
-import { ElLoading } from 'element-plus'
-import axios from 'axios'
+import { ElLoading, ElMessage } from 'element-plus'
+import axios from '@/services/api'
 
 const classes = ref([])
 const selectedClass = ref('')
 const students = ref([])
-
-watchEffect(() => {
-  if (classes.value.length > 0) {
-    selectedClass.value = classes.value[0].className
-    // 自动加载第一个班级的学生
-    handleClassChange(classes.value[0].className)
-  }
-})
 // 获取教师班级信息
 const fetchClasses = async () => {
   try {
     const res = await axios.get('/api/teacher')
-    const data = res.data.data
-    classes.value = data.classes
+    // 确保 data.classes 存在
+    const data = res.data
+    if (data && Array.isArray(data.classes)) {
+      classes.value = data.classes
 
-    // 如果接口返回空数组需要处理
-    if (classes.value.length === 0) {
-      console.warn('未找到班级信息')
+      // 如果有班级数据，自动选择第一个班级
+      if (classes.value.length > 0) {
+        selectedClass.value = classes.value[0].className
+        await handleClassChange(classes.value[0].className)
+      }
+    }
+
+    // 添加空数据提示
+    if (!classes.value.length) {
+      ElMessage.warning('暂无班级信息')
     }
   } catch (error) {
     console.error('获取班级失败:', error)
-    // 可以添加用户提示
     ElMessage.error('班级信息加载失败')
   }
 }
 
 // 班级选择变化处理
 const handleClassChange = async (className) => {
+  if (!className) {
+    students.value = []
+    return
+  }
+
   const loading = ElLoading.service()
   try {
     const res = await axios.get(`/api/teacher/class?className=${className}`)
     const data = res.data
-    students.value = data.students
+    // 修改这里：从返回的 classes 数组中找到对应班级的学生列表
+    const targetClass = data.classes.find((c) => c.className === className)
+    students.value = targetClass?.students || []
+
+    if (!students.value.length) {
+      ElMessage.info(`${className}暂无学生信息`)
+    }
+  } catch (error) {
+    console.error('获取学生列表失败:', error)
+    ElMessage.error('学生信息加载失败')
   } finally {
     loading.close()
   }
@@ -85,7 +95,7 @@ const handleClassChange = async (className) => {
 
 // 学生行点击处理
 const handleRowClick = (student) => {
-  emit('show-detail', student.number)
+  emit('show-detail', student.id)
 }
 
 const emit = defineEmits(['back', 'show-detail'])

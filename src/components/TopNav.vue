@@ -19,7 +19,7 @@
         <span>我的</span>
       </template>
       <el-menu-item index="2-1">个人信息</el-menu-item>
-      <el-menu-item index="2-2">登出</el-menu-item>
+      <el-menu-item index="2-2" @click="onLogout">登出</el-menu-item>
     </el-sub-menu>
     <TeacherInfo v-model="infoVisible" />
   </el-menu>
@@ -30,6 +30,9 @@ import { ref } from 'vue'
 import TeacherInfo from './TeacherInfo.vue'
 import { Avatar, Grid } from '@element-plus/icons-vue'
 
+import { useAuthStore } from '@/stores/auth'
+import { useRouter } from 'vue-router'
+
 const activeIndex = ref('1')
 const infoVisible = ref(false)
 const handleSelect = (key: string, keyPath: string[]) => {
@@ -37,6 +40,16 @@ const handleSelect = (key: string, keyPath: string[]) => {
   if (key === '2-1') {
     infoVisible.value = true
   }
+}
+
+const authStore = useAuthStore()
+const router = useRouter()
+
+// 登出
+function onLogout() {
+  authStore.logout()
+  // 登出后跳转到登录页
+  router.push('/')
 }
 </script>
 

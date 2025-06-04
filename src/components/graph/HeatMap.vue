@@ -53,7 +53,7 @@ let pointLight: THREE.PointLight // 用于动态光效
 
 // 初始化3D场景
 const init = () => {
-  if (!container.value) return
+  if (!container.value || !props.entities?.length) return
 
   scene = new THREE.Scene()
   scene.background = new THREE.Color(bgColor.value)
@@ -109,6 +109,7 @@ const init = () => {
 
 // 绘制立方体
 const drawCubes = () => {
+  if (!props.entities?.length) return
   cubes.forEach((cube) => scene.remove(cube))
   cubes = []
 
@@ -217,6 +218,20 @@ watch(
       controls.update()
     }
   },
+)
+
+watch(
+  () => props.entities,
+  (newVal) => {
+    if (newVal?.length) {
+      if (!scene) {
+        init()
+      } else {
+        drawCubes()
+      }
+    }
+  },
+  { deep: true },
 )
 
 // 处理鼠标悬停
