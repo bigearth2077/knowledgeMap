@@ -153,7 +153,7 @@ const updateQuestion = async () => {
 
 const deleteQuestion = async (id) => {
   try {
-    await axios.delete('/api/teacher/questions', { data: { id } })
+    await axios.delete(`/api/teacher/questions?id=${id}`)
     ElMessage.success('删除成功')
     fetchQuestions()
   } catch (error) {
